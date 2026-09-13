@@ -5,7 +5,6 @@ lang: el
 # Front matter for the blog (maistrelis.com). The site's `./make.sh quarto-article` renders this file
 # to hugo-md and lifts this map to the top of the Hugo page; the HTML render ignores it.
 hugo:
-  draft: true
   postType: article
   date: 2026-09-13
   summary: "Ένας οδηγός για το ισοδύναμο εισόδημα, τις διαμέσους και τις κατανομές: πόσα έχει ένα τυπικό ελληνικό νοικοκυριό, πόσο άνισα μοιράζεται το εισόδημα και πού στέκεται η Ελλάδα μέσα στην ΕΕ."
@@ -450,6 +449,9 @@ Working Paper No. 174, 2014, σ. 23 και Πίνακας 1.]
 
 ## Πηγές και μεθοδολογία
 
+- Ο κώδικας (R και Quarto) που κάνει τη στατιστική ανάλυση και παράγει το άρθρο, μαζί με τα αρχεία που
+  αναφέρονται παρακάτω, βρίσκεται στο GitHub:
+  [github.com/maisk/greek-household-incomes](https://github.com/maisk/greek-household-incomes).
 - ΕΛΣΤΑΤ, *Income Inequality, Survey on Income and Living Conditions `r year`*, και Eurostat EU-SILC
   (πίνακες `ilc_di01`, `ilc_di03`, `ilc_di04`, `ilc_li02`, `ilc_li03`, και για τη σύγκριση με την ΕΕ
   `ilc_di12`, `ilc_di11`). Κάθε έρευνα αφορά
@@ -457,6 +459,3 @@ Working Paper No. 174, 2014, σ. 23 και Πίνακας 1.]
 - Οι καμπύλες είναι κατανομές Dagum, προσαρμοσμένες στα δημοσιευμένα σημεία. Οι λεπτομέρειες και οι
   έλεγχοι είναι στα `doc/dagum_2025.md`, `doc/medians_quartiles.md` και `doc/household_types.md`.
 - Όλα τα νούμερα του άρθρου διαβάζονται από τα CSV στο `data/derived/` και ξαναφτιάχνονται με `just all`.
-- Ο κώδικας (R και Quarto) που κάνει τη στατιστική ανάλυση και παράγει το άρθρο, μαζί με τα αρχεία που
-  αναφέρονται παραπάνω, βρίσκεται στο GitHub:
-  [github.com/maisk/greek-household-incomes](https://github.com/maisk/greek-household-incomes).

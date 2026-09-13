@@ -2,8 +2,10 @@
 
 *How much Greek households earn, how unequally income is shared, and how Greece compares with the rest of the EU.*
 
-An article in Greek, **«Τι εισοδήματα έχουν τα ελληνικά νοικοκυριά;»** (`article/01_household_incomes.qmd`),
-built from official statistics (ELSTAT and Eurostat, EU-SILC) with a reproducible R pipeline. It covers:
+An article in Greek, **«Τι εισοδήματα έχουν τα ελληνικά νοικοκυριά;»**, published at
+<https://maistrelis.com/articles/greek-household-incomes/>. It is written in Quarto
+(`article/01_household_incomes.qmd`) and built from official statistics (ELSTAT and Eurostat, EU-SILC)
+with a reproducible R pipeline. It covers:
 
 - equivalised disposable income and the modified OECD scale;
 - the income distribution of the whole population, of age groups and of two household types, modelled
@@ -74,4 +76,4 @@ Code and text have different licences because Creative Commons
 its licences for software. MIT asks for the same thing as CC BY: keep the author's name.
 
 To credit the article: Kostas Maistrelis, «Τι εισοδήματα έχουν τα ελληνικά νοικοκυριά;», 2026,
-<https://github.com/maisk/greek-household-incomes>, CC BY 4.0.
+<https://maistrelis.com/articles/greek-household-incomes/>, CC BY 4.0.
