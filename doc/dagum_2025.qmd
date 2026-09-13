@@ -1,0 +1,288 @@
+---
+title: "Κατανομή ισοδύναμου διαθέσιμου εισοδήματος στην Ελλάδα — μοντέλο Dagum"
+format: gfm
+execute:
+  echo: false
+  warning: false
+---
+
+```{r setup}
+# All numbers come from CSVs in data/derived/:
+#   Rscript scripts/fetch_eurostat.R            # Eurostat tables -> data/eurostat/
+#   Rscript scripts/dagum_summary.R             # -> dagum_*.csv, group_cutoffs_check.csv, real_mean_median.csv
+#   Rscript scripts/medians_quartiles.R         # -> household_examples.csv
+#   Rscript scripts/plot_income_distribution.R  # -> figures/dagum_{density,fit}_<year>.png
+#   quarto render doc/dagum_2025.qmd
+d <- function(f) read.csv(file.path("..", "data", "derived", f))
+by_year <- d("dagum_by_year.csv")
+check   <- d("dagum_fit_check.csv")
+cmp     <- d("dagum_model_comparison.csv")
+qc      <- d("group_cutoffs_check.csv")
+rmm     <- d("real_mean_median.csv")
+ex      <- d("household_examples.csv")
+
+year <- check$survey_year[1]
+fy   <- by_year[by_year$survey_year == year, ]
+ex   <- ex[ex$survey_year == year, ]
+
+eur <- function(x) paste0(formatC(round(x), format = "d", big.mark = ".", decimal.mark = ","), " €")
+num <- function(x, digits = 1) formatC(x, format = "f", digits = digits, decimal.mark = ",")
+pct <- function(x, digits = 1) paste0(num(100 * x, digits), "%")
+sgn <- function(x) paste0(ifelse(x > 0, "+", ifelse(x < 0, "−", "")), num(abs(x)), "%")
+round_to <- function(x, to) round(x / to) * to
+
+tgt <- check[check$kind %in% c("cutoff", "share", "gini"), ]
+oos <- check[check$kind == "out_of_sample" & check$target %in% c(paste0("P", 1:5), paste0("D", 1:9), paste0("P", 95:99)), ]
+mm  <- check[check$target %in% c("mean", "median"), ]
+row <- function(df, t) df[df$target == t, ]
+```
+
+Έρευνα SILC `r year` της ΕΛΣΤΑΤ, με έτος αναφοράς εισοδήματος το **`r year - 1`**.
+
+![Πυκνότητα](../figures/dagum_density_`r year`.png)
+![Έλεγχος προσαρμογής](../figures/dagum_fit_`r year`.png)
+
+> Το αρχείο `.md` παράγεται από το `doc/dagum_2025.qmd`. Οι αριθμοί διαβάζονται από τα CSV στο
+> `data/derived/` (βλ. την αρχή του `.qmd` για τη σειρά των scripts). Εξαίρεση είναι οι αριθμοί
+> που παραθέτονται από άλλες πηγές (δείγμα της έρευνας, βιβλιογραφία), με την πηγή τους δίπλα.
+
+## 1. Τι είναι το ισοδύναμο διαθέσιμο εισόδημα
+
+**Διαθέσιμο εισόδημα νοικοκυριού** είναι το συνολικό **καθαρό** εισόδημα όλων των μελών του
+νοικοκυριού (μετά από φόρους και ασφαλιστικές εισφορές) από εργασία, περιουσία, συντάξεις,
+κοινωνικά επιδόματα και μεταβιβάσεις από άλλα νοικοκυριά, για ένα ημερολογιακό έτος.
+
+Για να συγκρίνονται νοικοκυριά διαφορετικού μεγέθους, το εισόδημα διαιρείται με το
+**ισοδύναμο μέγεθος** του νοικοκυριού (τροποποιημένη κλίμακα OECD, όπως στο `oecd_scale()` του
+`R/income_distribution.R`):
+
+| Μέλος | Βάρος |
+|---|---|
+| 1ος ενήλικας | 1,0 |
+| κάθε άλλο άτομο 14+ | 0,5 |
+| κάθε παιδί κάτω των 14 | 0,3 |
+
+```{r}
+ex_med <- ex[ex$statistic == "Διάμεσος συνόλου", ]
+```
+
+Παράδειγμα: ζευγάρι με ένα μωρό έχει μέγεθος 1 + 0,5 + 0,3 = **`r num(ex_med$couple_1child / ex_med$equivalised)`**.
+Αν το νοικοκυριό έχει `r eur(ex_med$couple_1child)` καθαρά τον χρόνο, το ισοδύναμο εισόδημα είναι
+`r eur(ex_med$couple_1child)` / `r num(ex_med$couple_1child / ex_med$equivalised)` = `r eur(ex_med$equivalised)`,
+δηλαδή η διάμεσος της χώρας.
+
+Το ισοδύναμο εισόδημα αποδίδεται σε **κάθε άτομο** του νοικοκυριού. Άρα η κατανομή είναι
+κατανομή **ατόμων** και δείχνει βιοτικό επίπεδο, όχι μισθούς.
+
+## 2. Τι δείχνουν τα δύο γραφήματα
+
+### `figures/dagum_density_`r year`.png`: η κατανομή
+
+- Η καμπύλη είναι η **πυκνότητα**: όσο πιο ψηλά, τόσο περισσότεροι άνθρωποι έχουν περίπου
+  αυτό το εισόδημα. Το εμβαδόν κάτω από την καμπύλη ανάμεσα σε δύο τιμές είναι το ποσοστό του
+  πληθυσμού με εισόδημα σε αυτό το διάστημα.
+- Οι πέντε αποχρώσεις είναι τα **πεμπτημόρια**. Κάθε ζώνη έχει το ίδιο εμβαδόν (20% του
+  πληθυσμού), γι' αυτό οι ζώνες στενεύουν εκεί που η καμπύλη είναι ψηλή και απλώνονται στην ουρά.
+- Κάτω από κάθε ζώνη φαίνεται το **μερίδιο του συνολικού εισοδήματος** που παίρνει κατά το
+  μοντέλο: το φτωχότερο 20% παίρνει `r pct(fy$share_q1_model)`, το πλουσιότερο 20%
+  `r pct(fy$share_q5_model)`.
+- Οι κατακόρυφες γραμμές είναι η **διάμεσος** (`r eur(fy$median_model)`) και ο **μέσος**
+  (`r eur(fy$mean_model)`) του μοντέλου. Ο μέσος είναι δεξιότερα επειδή η κατανομή έχει μακριά
+  δεξιά ουρά: λίγα υψηλά εισοδήματα τραβούν τον μέσο πάνω.
+- Ο οριζόντιος άξονας κόβεται στο P99 του μοντέλου (`r eur(round_to(fy$p99_model, 100))`) για να
+  διαβάζεται το σώμα της κατανομής. Το πλουσιότερο 1% υπάρχει στο μοντέλο αλλά δεν σχεδιάζεται.
+
+### `figures/dagum_fit_`r year`.png`: έλεγχος προσαρμογής
+
+- Η μπλε καμπύλη είναι η **αθροιστική κατανομή** του μοντέλου: για κάθε εισόδημα x, τι ποσοστό
+  του πληθυσμού έχει εισόδημα έως x.
+- Τα **μαύρα σημεία** είναι τα όρια ομάδων της ΕΛΣΤΑΤ, που χρησιμοποιήθηκαν στο fit.
+- Τα **λευκά σημεία** είναι τα όρια δεκατημορίων και τα P95–P99 της Eurostat, που **δεν**
+  χρησιμοποιήθηκαν στο fit. Είναι ανεξάρτητος έλεγχος: όσο πιο κοντά στην καμπύλη, τόσο καλύτερα
+  περιγράφει το μοντέλο και σημεία που δεν «είδε».
+
+## 3. Πηγές δεδομένων
+
+| Πηγή | Τι πήραμε | Αρχείο στο repo |
+|---|---|---|
+| ΕΛΣΤΑΤ, *Income Inequality — `r year` Survey on Income and Living Conditions* ([σελίδα SILC της ΕΛΣΤΑΤ](https://www.statistics.gr/en/statistics/-/publication/SFA10/-)) | όρια και μερίδια τεταρτημορίων και πεμπτημορίων, Gini, S80/S20 | `research/Income inequality ( `r year` ).pdf` → `data/elstat_silc_groups.csv`, `data/elstat_silc_indicators.csv` |
+| Eurostat [`ilc_di01`](https://ec.europa.eu/eurostat/databrowser/view/ilc_di01/default/table?lang=en), *Distribution of income by quantiles* | όρια δεκατημορίων, P1–P5, P95–P99 (για τον έλεγχο) | `data/eurostat/ilc_di01.csv` |
+| Eurostat [`ilc_di03`](https://ec.europa.eu/eurostat/databrowser/view/ilc_di03/default/table?lang=en), *Mean and median income by age and sex* | πραγματικός μέσος και διάμεσος | `data/eurostat/ilc_di03.csv` |
+
+```{r}
+qc_word <- if (qc$group_type[1] == "quintile") "πεμπτημορίων" else "τεταρτημορίων"
+qc_dev  <- 100 * max(abs(qc$elstat / qc$eurostat - 1))
+qc_txt  <- if (qc_dev == 0) "συμπίπτουν ακριβώς" else if (qc_dev < 0.5) "διαφέρουν ελάχιστα" else
+  sprintf("διαφέρουν έως %s%%", num(qc_dev))
+```
+
+Τα δεδομένα της Eurostat κατεβαίνουν από το
+[dissemination API](https://ec.europa.eu/eurostat/api/dissemination/statistics/1.0/data/ilc_di03?geo=EL&format=JSON&lang=EN)
+με `Rscript scripts/fetch_eurostat.R`. Είναι τα ίδια στοιχεία SILC που δίνει η ΕΛΣΤΑΤ: τα όρια
+των `r qc_word` `r qc_txt`
+(ΕΛΣΤΑΤ `r paste(formatC(qc$elstat, format = "d", big.mark = "."), collapse = " / ")` €,
+Eurostat `r paste(formatC(qc$eurostat, format = "d", big.mark = "."), collapse = " / ")` €).
+
+## 4. Μέσος και διάμεσος: πραγματικές τιμές και μοντέλο
+
+Υπάρχει πηγή για τις πραγματικές τιμές: ο πίνακας **Eurostat `ilc_di03`**. Το PDF της ΕΛΣΤΑΤ
+δίνει τη διάμεσο έμμεσα, ως το ανώτατο όριο του 2ου τεταρτημορίου (`r eur(fy$median_elstat)`),
+αλλά **δεν δίνει τον μέσο**.
+
+```{r}
+t4 <- data.frame(
+  " " = c("Μέσος", "Διάμεσος"),
+  "Πραγματικό (Eurostat `ilc_di03`)" = paste0("**", eur(mm$observed), "**"),
+  "Μοντέλο Dagum" = eur(mm$fitted),
+  "Απόκλιση" = sgn(mm$rel_err_pct),
+  check.names = FALSE)
+knitr::kable(t4, align = "lrrr")
+```
+
+Οι τιμές που γράφει το γράφημα (`r eur(fy$median_model)` και `r eur(fy$mean_model)`) είναι
+**του μοντέλου**:
+
+- η διάμεσος είναι το σημείο της κατανομής όπου βρίσκεται ακριβώς το 50% του πληθυσμού,
+- ο μέσος υπολογίζεται με τον κλειστό τύπο του μέσου της Dagum.
+
+```{r}
+max_err <- max(abs(c(by_year$mean_err_pct, by_year$median_err_pct)), na.rm = TRUE)
+```
+
+Ο μέσος **δεν** χρησιμοποιήθηκε στο fit, οπότε η απόκλιση `r sgn(row(mm, "mean")$rel_err_pct)`
+είναι ανεξάρτητη επιβεβαίωση του μοντέλου. Για όλα τα έτη
+`r min(by_year$survey_year)`–`r max(by_year$survey_year)` η απόκλιση μέσου και διαμέσου μένει
+κάτω από `r num(ceiling(max_err * 10) / 10)`%:
+
+```{r}
+t4b <- data.frame(
+  "Έρευνα (εισοδήματα)" = sprintf("%d (%d)", by_year$survey_year, by_year$income_year),
+  "Μέσος πραγματικός" = eur(by_year$mean_real), "Μέσος μοντέλου" = eur(by_year$mean_model),
+  "Απόκλιση μέσου" = sgn(by_year$mean_err_pct),
+  "Διάμεσος πραγματική" = eur(by_year$median_real), "Διάμεσος μοντέλου" = eur(by_year$median_model),
+  "Απόκλιση διαμέσου" = sgn(by_year$median_err_pct),
+  check.names = FALSE)
+knitr::kable(t4b, align = "lrrrrrr", row.names = FALSE)
+```
+
+```{r}
+ch6 <- rmm[rmm$age == "Y_LT6", ]; ch18 <- rmm[rmm$age == "Y_LT18", ]; tot <- rmm[rmm$age == "TOTAL", ]
+```
+
+Ο ίδιος πίνακας δίνει και τιμές για τα παιδιά. Για παιδιά κάτω των 6 ετών η διάμεσος είναι
+`r eur(ch6$median)` και ο μέσος `r eur(ch6$mean)`, και για παιδιά κάτω των 18 `r eur(ch18$median)`
+και `r eur(ch18$mean)`. Και οι δύο ομάδες βρίσκονται κάτω από τον συνολικό πληθυσμό
+(`r eur(tot$median)` και `r eur(tot$mean)`).
+
+## 5. Πώς κατασκευάστηκε
+
+```{r}
+n_cut <- sum(tgt$kind == "cutoff")
+n_qt <- sum(grepl("quartile", tgt$target)); n_qn <- sum(grepl("quintile", tgt$target))
+cut_names <- paste(sub("Q", "P", tgt$target[tgt$kind == "cutoff"]), collapse = ", ")
+gini_row <- tgt[tgt$kind == "gini", ]
+cm <- function(m) cmp[cmp$model == m, ]
+```
+
+### 5.1 Δεδομένα-στόχοι
+
+Από το δελτίο της ΕΛΣΤΑΤ για το `r year` πήραμε `r nrow(tgt)` αριθμούς:
+
+- `r n_cut` όρια ομάδων (`r cut_names`),
+- `r n_qt` μερίδια εισοδήματος τεταρτημορίων και `r n_qn` πεμπτημορίων,
+- τον δείκτη Gini (`r num(gini_row$observed)`%).
+
+### 5.2 Επιλογή μοντέλου
+
+Χρειαζόμασταν μια συνεχή κατανομή που να περιγράφει όλο τον πληθυσμό. Δοκιμάστηκαν τρεις, όλες
+με fit στους ίδιους `r nrow(tgt)` στόχους:
+
+```{r}
+t5 <- data.frame(
+  "Κατανομή" = cmp$model,
+  "Παράμετροι" = ifelse(is.na(cmp$n_params), "—", cmp$n_params),
+  "Διάμεσος" = eur(cmp$median),
+  "Gini" = pct(cmp$gini),
+  "Μερίδια πεμπτημορίων" = ifelse(is.na(cmp$share_q1), "δεν δημοσιεύονται",
+                                  sprintf("%s / %s / %s / %s / %s", pct(cmp$share_q1), pct(cmp$share_q2),
+                                          pct(cmp$share_q3), pct(cmp$share_q4), pct(cmp$share_q5))),
+  "Μέγιστη απόκλιση ορίων ομάδων" = ifelse(is.na(cmp$max_abs_cutoff_err_pct), "—",
+                                           paste0("±", num(cmp$max_abs_cutoff_err_pct), "%")),
+  check.names = FALSE)
+knitr::kable(t5, align = "lrrrcr", row.names = FALSE)
+```
+
+```{r}
+fitted_models <- cmp[!is.na(cmp$n_params), ]
+best <- fitted_models$model[which.min(fitted_models$max_abs_cutoff_err_pct)]
+q1_obs <- cm("ΕΛΣΤΑΤ")$share_q1
+```
+
+- **Pareto:** δίνει μερίδιο `r pct(cm("Pareto")$share_q1)` για το φτωχότερο
+  20%`r if (is.na(q1_obs)) " (η ΕΛΣΤΑΤ δεν δίνει πεμπτημόρια για αυτό το έτος)" else paste(" αντί για", pct(q1_obs))`,
+  και αποκλίνει έως `r num(cm("Pareto")$max_abs_cutoff_err_pct)`% στα όρια των ομάδων. Η Pareto έχει ελάχιστο εισόδημα και μετά μόνο φθίνουσα πυκνότητα, οπότε
+  περιγράφει μόνο την ουρά των υψηλών εισοδημάτων, όχι το σώμα της κατανομής.
+- **Lognormal:** `r if (cm("Lognormal")$max_abs_cutoff_err_pct < cm("Pareto")$max_abs_cutoff_err_pct) "πιο κοντά, αλλά" else "όχι καλύτερη,"` με Gini `r pct(cm("Lognormal")$gini)` αντί για
+  `r pct(cm("ΕΛΣΤΑΤ")$gini)` και απόκλιση έως `r num(cm("Lognormal")$max_abs_cutoff_err_pct)`%
+  στα όρια.
+- **Dagum (Burr III):** η κλασική κατανομή για εισοδήματα στη βιβλιογραφία. Στο πάνω άκρο
+  συμπεριφέρεται σαν Pareto, αλλά έχει και ρεαλιστικό σώμα. `r if (best == "Dagum") "Έχει τη μικρότερη απόκλιση" else paste0("Αποκλίνει λίγο περισσότερο από τη ", best, " σε αυτό το έτος")`
+  (`r num(cm("Dagum")$max_abs_cutoff_err_pct)`%). Επιλέχθηκε για όλα τα έτη, για να είναι συγκρίσιμα.
+
+Η Dagum έχει τρεις παραμέτρους: δύο για το σχήμα (a, p) και μία κλίμακας (b, σε €).
+
+### 5.3 Fit
+
+Βρήκαμε τα a, p, b που φέρνουν το μοντέλο όσο πιο κοντά γίνεται και στους `r nrow(tgt)` στόχους
+ταυτόχρονα (ελάχιστα τετράγωνα στη λογαριθμική κλίμακα, ώστε κάθε στόχος να μετράει ως σχετικό
+σφάλμα). Τα μερίδια και το Gini υπολογίζονται με ακριβείς τύπους της Dagum, χωρίς προσομοίωση.
+Αποτέλεσμα για το `r year`: **a = `r num(fy$a, 2)`, p = `r num(fy$p, 2)`, b = `r eur(fy$b)`**.
+
+### 5.4 Έλεγχος
+
+```{r}
+cut_err <- max(abs(tgt$rel_err_pct[tgt$kind == "cutoff"]))
+sh_err  <- max(abs(tgt$rel_err_pct[tgt$kind == "share"]))
+big <- oos[abs(oos$rel_err_pct) > 5, ]
+ok  <- oos[abs(oos$rel_err_pct) <= 5, ]
+```
+
+- **Σε σύγκριση με τους στόχους:** όρια ομάδων μέσα σε ±`r num(cut_err)`%, μερίδια μέσα σε
+  ±`r num(sh_err)`%, Gini `r num(gini_row$fitted)`% αντί για `r num(gini_row$observed)`%.
+- **Σε σύγκριση με στοιχεία που το μοντέλο δεν είδε:** `r nrow(oos)` όρια της Eurostat
+  (`r paste(oos$target, collapse = ", ")`). Όσα αντιστοιχούν σε ίδιο ποσοστό πληθυσμού με κάποιον
+  στόχο της ΕΛΣΤΑΤ (π.χ. D2 = P20) παραλείπονται, γιατί είναι ο ίδιος αριθμός. Τα `r nrow(ok)` είναι
+  μέσα σε ±`r num(max(abs(ok$rel_err_pct)))`%, και `r nrow(big)` αποκλίνουν πάνω από 5%:
+
+```{r}
+t6 <- data.frame("Σημείο" = big$target, "Eurostat" = eur(big$observed), "Μοντέλο" = eur(big$fitted),
+                 "Απόκλιση" = sgn(big$rel_err_pct), check.names = FALSE)
+knitr::kable(t6, align = "lrrr", row.names = FALSE)
+```
+
+```{r}
+#| results: asis
+zone <- ifelse(big$p <= 0.05, "στο **πολύ χαμηλό άκρο**",
+               ifelse(big$p < 0.99, "στο **ανώτερο-μεσαίο στρώμα**", "στην **ακραία κορυφή**"))
+dir_ <- ifelse(big$rel_err_pct > 0, "δίνει μεγαλύτερο εισόδημα από το πραγματικό",
+               "δίνει μικρότερο εισόδημα από το πραγματικό")
+if (nrow(big)) {
+  cat("Άρα το μοντέλο περιγράφει καλά το σώμα της κατανομής, αλλά όχι τα άκρα:\n\n")
+  cat(sprintf("- %s (%s) %s\n", zone, big$target, dir_), sep = "")
+  cat("\n")
+}
+```
+
+### 5.5 Γραφήματα
+
+Με ggplot2. Κώδικας: `R/income_distribution.R` (μοντέλο και fit) και
+`scripts/plot_income_distribution.R` (γραφήματα: `Rscript scripts/plot_income_distribution.R `r year``).
+
+## Περιορισμοί
+
+- Το SILC είναι δειγματοληπτική έρευνα (10.408 νοικοκυριά το 2025, κατά το δελτίο της ΕΛΣΤΑΤ) και
+  **υποεκτιμά τα πολύ υψηλά εισοδήματα**.
+- Η κατανομή αφορά **όλον τον πληθυσμό**. Ομάδες με διαφορετικά εισοδήματα έχουν δικές τους
+  κατανομές: για τους κάτω των 65 και τους 18–64 στο `doc/medians_quartiles.md` και στα
+  `figures/dagum_*_age.png`, για τύπους νοικοκυριού στο `doc/household_types.md`.
+- Το fit μπορεί να βελτιωθεί βάζοντας και τα δεκατημόρια της Eurostat στους στόχους.

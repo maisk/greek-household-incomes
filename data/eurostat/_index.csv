@@ -1,0 +1,10 @@
+"dataset","description","eurostat_label","updated","rows"
+"ilc_di01","Distribution of income by quantiles (cut-off points and shares)","Distribution of income by quantiles","2026-07-27T23:00:00+0200",4599
+"ilc_di03","Mean and median equivalised income by age and sex","Mean and median income by age and sex","2026-06-08T23:00:00+0200",10998
+"ilc_di04","Mean and median equivalised income by household composition","Distribution of income by household composition","2026-06-08T23:00:00+0200",2742
+"ilc_di11","Income quintile share ratio S80/S20 by sex and age group","Income quintile share ratio S80/S20 for disposable income by sex and age group","2026-06-08T23:00:00+0200",207
+"ilc_di11d","Income share ratio S80/S50 by sex and age group","Income quintile share ratio S80/S50 for disposable income by sex and age group","2026-06-08T23:00:00+0200",171
+"ilc_di11e","Income share ratio S50/S20 by sex and age group","Income quintile share ratio S50/S20 for disposable income by sex and age group","2026-06-08T23:00:00+0200",171
+"ilc_di20","Share of people with income >= 130-160% of national mean/median, by age and sex","Share of people having income greater or equal to specific national thresholds by age and sex","2026-06-10T23:00:00+0200",3696
+"ilc_li02","Share of people below 40-70% of national mean/median (poverty thresholds), by age and sex","At-risk-of-poverty rate by poverty threshold, age and sex - EU-SILC and ECHP surveys","2026-06-10T23:00:00+0200",33343
+"ilc_li03","Share of people below 40-70% of national mean/median (poverty thresholds), by household type","At-risk-of-poverty rate by poverty threshold and household type - EU-SILC and ECHP surveys","2026-06-18T23:00:00+0200",5754

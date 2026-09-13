@@ -1,0 +1,153 @@
+---
+title: "Εισόδημα ανά τύπο νοικοκυριού: ζευγάρι χωρίς παιδιά και ζευγάρι με 1 παιδί"
+format: gfm
+execute:
+  echo: false
+  warning: false
+---
+
+```{r setup}
+# All numbers come from CSVs in data/derived/:
+#   Rscript scripts/fetch_eurostat.R                     # Eurostat tables -> data/eurostat/
+#   Rscript scripts/household_types.R                    # -> household_*.csv
+#   Rscript scripts/plot_income_distribution_household.R # -> figures/*household*.png, *couple*.png
+#   quarto render doc/household_types.qmd
+d <- function(f) read.csv(file.path("..", "data", "derived", f))
+types <- d("household_types.csv")
+chk   <- d("household_fit_check.csv")
+inc   <- d("household_income_at_median.csv")
+hy    <- d("household_medians_by_year.csv")
+
+year <- types$survey_year[1]
+eur <- function(x) ifelse(is.na(x), "—",
+                          paste0(formatC(round(x), format = "d", big.mark = ".", decimal.mark = ","), " €"))
+num <- function(x, digits = 1) formatC(x, format = "f", digits = digits, decimal.mark = ",")
+sgn <- function(x) paste0(ifelse(x > 0, "+", ifelse(x < 0, "−", "")), num(abs(x)), "%")
+ty  <- function(h) types[types$hhcomp == h, ]
+iv  <- function(h, v) inc[inc$hhcomp == h & inc$variant == v, ]
+tot <- hy[hy$survey_year == year & hy$hhcomp == "TOTAL", ]
+c0 <- ty("A2_2LT65"); c1 <- ty("A2_DCH1")
+```
+
+SILC `r year` (Eurostat), με εισοδήματα του **`r year - 1`**. Όλα τα ποσά είναι **ισοδύναμο διαθέσιμο
+εισόδημα**, εκτός αν γράφει «εισόδημα νοικοκυριού». Ισοδύναμο εισόδημα = καθαρό εισόδημα του
+νοικοκυριού διαιρεμένο με το ισοδύναμο μέγεθός του (τροποποιημένη κλίμακα ΟΟΣΑ: 1 για τον πρώτο ενήλικα,
+0,5 για κάθε άλλο άτομο 14 ετών και πάνω, 0,3 για κάθε παιδί κάτω των 14).
+
+> Το αρχείο `.md` παράγεται από το `doc/household_types.qmd`. Όλοι οι αριθμοί διαβάζονται από τα CSV
+> στο `data/derived/`, που γράφει το `scripts/household_types.R`.
+
+![Σύγκριση](../figures/dagum_compare_household_`r year`.png)
+
+## 1. Οι δύο τύποι νοικοκυριού
+
+```{r}
+#| results: asis
+cat(sprintf("- **%s** (Eurostat `%s`): %s.\n", types$label, types$hhcomp, types$who), sep = "")
+```
+
+Δύο διευκρινίσεις για το «ζευγάρι με 1 παιδί»:
+
+- **Δεν έχει όριο ηλικίας για τους ενήλικες.** Η Eurostat δεν δίνει εκδοχή μόνο για κάτω των 65,
+  αλλά στην πράξη οι 65+ με εξαρτώμενο παιδί είναι λίγοι.
+- **Το παιδί δεν είναι απαραίτητα μικρό.** Περιλαμβάνει και φοιτητές έως 24 ετών, οπότε η ομάδα
+  μιγνύει ζευγάρια 30 ετών με μωρό και ζευγάρια 50 ετών με φοιτητή. Οι οικογένειες με μωρό είναι
+  μάλλον λίγο κάτω από τη διάμεσο της ομάδας.
+
+Για τύπους με σταθερό αριθμό μελών (2 ή 3 άτομα), η διάμεσος των ατόμων συμπίπτει με τη διάμεσο
+των νοικοκυριών. Εδώ λοιπόν το «οικογένεια στη διάμεσο» έχει κυριολεκτικό νόημα.
+
+## 2. Διάμεσος και μέσος: πραγματικές τιμές
+
+Πηγή: Eurostat [`ilc_di04`](https://ec.europa.eu/eurostat/databrowser/view/ilc_di04/default/table?lang=en)
+(*Distribution of income by household composition*).
+
+```{r}
+t1 <- rbind(
+  data.frame(g = "Όλος ο πληθυσμός", med = tot$median, mean = tot$mean, rel = NA),
+  data.frame(g = types$label, med = types$median_real, mean = types$mean_real,
+             rel = 100 * (types$median_real / tot$median - 1)))
+knitr::kable(data.frame("Ομάδα" = t1$g, "**Διάμεσος**" = paste0("**", eur(t1$med), "**"),
+                        "Μέσος" = eur(t1$mean),
+                        "Διάμεσος / συνολική" = ifelse(is.na(t1$rel), "—", sgn(t1$rel)),
+                        check.names = FALSE), align = "lrrr")
+```
+
+```{r}
+gap <- 100 * (c1$median_real / c0$median_real - 1)
+```
+
+Το μεσαίο ζευγάρι με παιδί έχει **`r num(abs(gap))`%** `r if (gap < 0) "χαμηλότερο" else "υψηλότερο"`
+βιοτικό επίπεδο από το μεσαίο ζευγάρι χωρίς παιδιά`r if (gap < 0) ", γιατί το εισόδημά του μοιράζεται σε περισσότερα άτομα" else ""`.
+
+### Ανά έτος (διάμεσοι)
+
+```{r}
+w <- reshape(hy[, c("survey_year", "hhcomp", "median")], idvar = "survey_year", timevar = "hhcomp",
+             direction = "wide")
+w <- w[order(w$survey_year), ]
+w <- w[w$survey_year >= 2015, ]  # same span as the other docs; EU-SILC only (ECHP before 2003)
+knitr::kable(data.frame(
+  "Έρευνα (εισοδήματα)" = sprintf("%d (%d)", w$survey_year, w$survey_year - 1),
+  "Όλος ο πληθυσμός" = eur(w$median.TOTAL),
+  "Ζευγάρι <65 χωρίς παιδιά" = eur(w$median.A2_2LT65),
+  "Ζευγάρι με 1 παιδί" = eur(w$median.A2_DCH1),
+  check.names = FALSE), align = "lrrr", row.names = FALSE)
+```
+
+## 3. Η οικογένεια στη διάμεσο: πόσα βγάζει ως νοικοκυριό
+
+Καθαρό εισόδημα νοικοκυριού = πραγματική διάμεσος του τύπου × ισοδύναμο μέγεθος. Ο πολλαπλασιασμός
+είναι ακριβής, όχι μοντέλο. Για το ζευγάρι με παιδί το μέγεθος εξαρτάται από την ηλικία του παιδιού
+(0,3 κάτω των 14, 0,5 από 14 και πάνω), ενώ η Eurostat δίνει μία διάμεσο για όλη την ομάδα.
+
+```{r}
+knitr::kable(data.frame(
+  "Οικογένεια στη διάμεσο" = ifelse(inc$hhcomp == "A2_DCH1", sprintf("%s, %s", inc$label, inc$variant), inc$label),
+  "Διάμεσος ισοδύναμου" = eur(inc$median_real),
+  "Μέγεθος" = num(inc$scale),
+  "**Εισόδημα νοικοκυριού / έτος**" = paste0("**", eur(inc$household_income), "**"),
+  "÷ 12" = eur(inc$monthly_12), "÷ 14" = eur(inc$monthly_14),
+  "1.200 € ως % του εισοδήματος" = paste0(num(inc$match_cap_share_pct), "%"),
+  check.names = FALSE), align = "lrrrrrr", row.names = FALSE)
+```
+
+Το ÷14 αφορά μισθωτούς με δώρα και επίδομα αδείας. Η τελευταία στήλη δείχνει τι ποσοστό του
+εισοδήματος χρειάζεται για να πάρει μια οικογένεια το πλήρες κρατικό matching του πρώτου έτους.
+
+```{r}
+b1 <- iv("A2_DCH1", "παιδί κάτω των 14"); b0 <- iv("A2_2LT65", "χωρίς παιδιά")
+```
+
+Για το μέτρο του επενδυτικού λογαριασμού η σχετική γραμμή είναι η οικογένεια με **παιδί κάτω των 14**:
+**`r eur(b1$household_income)`** καθαρά τον χρόνο στη διάμεσο. Είναι `r eur(b1$household_income - b0$household_income)`
+περισσότερα από το μεσαίο ζευγάρι χωρίς παιδιά, αλλά για τρία άτομα αντί για δύο. Το πλήρες matching
+ζητά από αυτή την οικογένεια το **`r num(b1$match_cap_share_pct)`%** του καθαρού εισοδήματός της.
+
+## 4. Οι κατανομές
+
+![Ζευγάρι χωρίς παιδιά](../figures/dagum_density_`r year`_couple_lt65.png)
+![Ζευγάρι με 1 παιδί](../figures/dagum_density_`r year`_couple_1child.png)
+![Έλεγχος](../figures/dagum_fit_`r year`_household.png)
+
+Οι καμπύλες είναι κατανομές Dagum, με fit στα στοιχεία που δημοσιεύει η Eurostat ανά τύπο νοικοκυριού:
+
+- **`ilc_li03`:** ποσοστό της ομάδας κάτω από 40/50/60/70% της εθνικής διαμέσου και 40/50/60% του
+  εθνικού μέσου (7 σημεία της κατανομής),
+- **`ilc_di04`:** διάμεσος και μέσος της ομάδας.
+
+Πάνω από τη διάμεσο δεν δημοσιεύεται κανένα σημείο. Εκεί το σχήμα της καμπύλης στηρίζεται μόνο στον
+μέσο και στη μορφή της Dagum.
+
+```{r}
+knitr::kable(data.frame(
+  "Ομάδα" = types$label,
+  "Διάμεσος πραγματική / μοντέλου" = paste(eur(types$median_real), "/", eur(types$median_model)),
+  "Μέσος πραγματικός / μοντέλου" = paste(eur(types$mean_real), "/", eur(types$mean_model)),
+  "Μέγιστη απόκλιση στόχων" = paste0("±", num(types$max_abs_err_pct), "%"),
+  "P25 / P75 μοντέλου" = paste(eur(types$p25_model), "/", eur(types$p75_model)),
+  "Gini μοντέλου" = paste0(num(100 * types$gini_model), "%"),
+  check.names = FALSE), align = "lrrrrr", row.names = FALSE)
+```
+
+Τα P25, P75 και Gini είναι **εκτιμήσεις του μοντέλου**. Η Eurostat δεν τα δημοσιεύει ανά τύπο νοικοκυριού.

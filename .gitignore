@@ -1,0 +1,26 @@
+# R session
+.RData
+.Rhistory
+.Rapp.history
+.Ruserdata
+.Rproj.user/
+
+# renv (library is restored from renv.lock)
+renv/library/
+renv/staging/
+
+# Quarto
+/.quarto/
+*_files/
+*_cache/
+
+# OS / editors
+.DS_Store
+*~
+
+# Rendered articles and HTML docs (rebuild with `just articles` / `just docs`)
+article/*.html
+doc/*.html
+
+# Reference PDFs are kept locally only, not published
+research/**/*.pdf

@@ -1,0 +1,237 @@
+---
+title: "Διάμεσοι και τεταρτημόρια ισοδύναμου διαθέσιμου εισοδήματος — Ελλάδα"
+format: gfm
+execute:
+  echo: false
+  warning: false
+---
+
+```{r setup}
+# All numbers come from the CSVs written by scripts/medians_quartiles.R:
+#   Rscript scripts/fetch_eurostat.R      # Eurostat tables -> data/eurostat/
+#   Rscript scripts/medians_quartiles.R   # -> data/derived/*.csv
+#   quarto render doc/medians_quartiles.qmd
+d <- function(f) read.csv(file.path("..", "data", "derived", f))
+med <- d("medians_by_age.csv")
+qt  <- d("quartiles_total.csv")
+qa  <- d("quartiles_age.csv")
+ex  <- d("household_examples.csv")
+
+year <- max(qa$survey_year)
+eur <- function(x) ifelse(is.na(x), "—",
+                          paste0(formatC(round(x), format = "d", big.mark = ".", decimal.mark = ","), " €"))
+num <- function(x, digits = 1) formatC(x, format = "f", digits = digits, decimal.mark = ",")
+sgn <- function(x) paste0(ifelse(x > 0, "+", ifelse(x < 0, "−", "")), num(abs(x)), "%")
+pct_share <- function(p) paste0(num(100 * p), "%")
+yr <- function(y) sprintf("%d (%d)", y, y - 1)
+years_txt <- function(y) if (length(y) == 1) paste("το", y) else paste("τα έτη", paste(y, collapse = ", "))
+
+m_y <- med[med$survey_year == year, ]
+m   <- function(age, col = "median") m_y[[col]][m_y$age == age]
+q_y <- qt[qt$survey_year == year, ]
+qa_ <- function(age, q) qa[qa$age == age & qa$quantile == q, ]
+```
+
+Όλα τα ποσά είναι **ισοδύναμο διαθέσιμο εισόδημα ανά άτομο**, σε € ανά έτος, καθαρά, με την
+τροποποιημένη κλίμακα OECD (βλ. `doc/dagum_2025.md` §1). Κάθε άτομο παίρνει το ισοδύναμο εισόδημα
+του νοικοκυριού του. Η ηλικία είναι του **ατόμου**, όχι του νοικοκυριού.
+
+**Έτος:** «SILC `r year`» σημαίνει έρευνα του `r year` με **εισοδήματα του `r year - 1`**.
+
+**Ομάδες:**
+
+- **Όλος ο πληθυσμός:** όλοι οι κάτοικοι σε ιδιωτικά νοικοκυριά.
+- **Κάτω των 65:** όλα τα άτομα 0–64 ετών, μαζί με τα παιδιά.
+- **18–64:** μόνο οι ενήλικες σε ηλικία εργασίας. Τα παιδιά δεν μετράνε ως άτομα, αλλά επηρεάζουν
+  το εισόδημα των γονιών μέσω της κλίμακας.
+
+Σημειώνεται παντού αν ένας αριθμός είναι **πραγματικός** (δημοσιευμένος) ή **εκτίμηση του μοντέλου** Dagum.
+
+> Το αρχείο `.md` παράγεται από το `doc/medians_quartiles.qmd`. Όλοι οι αριθμοί διαβάζονται από τα
+> CSV στο `data/derived/`, που γράφει το `scripts/medians_quartiles.R`. Δεν γράφεται κανένας
+> αριθμός με το χέρι.
+
+## 1. Διάμεσοι: πραγματικές τιμές
+
+Πηγή: Eurostat [`ilc_di03`](https://ec.europa.eu/eurostat/databrowser/view/ilc_di03/default/table?lang=en)
+(*Mean and median income by age and sex*) → `data/derived/medians_by_age.csv`.
+
+### SILC `r year` (εισοδήματα `r year - 1`)
+
+```{r}
+t1 <- data.frame(
+  "Ομάδα"               = m_y$group,
+  "**Διάμεσος**"        = paste0("**", eur(m_y$median), "**"),
+  "Μέσος"               = eur(m_y$mean),
+  "Διάμεσος / συνολική" = ifelse(m_y$age == "TOTAL", "—", sgn(m_y$median_vs_total_pct)),
+  check.names = FALSE)
+knitr::kable(t1, align = "lrrr")
+```
+
+```{r}
+agree <- abs(q_y$elstat_p50 / m("TOTAL") - 1) < 0.005
+```
+
+Η διάμεσος του συνόλου `r if (agree) "συμφωνεί με" else "διαφέρει από"` την ΕΛΣΤΑΤ:
+`r eur(q_y$elstat_p50)` ως όριο του 2ου τεταρτημορίου, έναντι `r eur(m("TOTAL"))` στην Eurostat`r if (!agree) " (βλ. §2α)" else ""`.
+
+### Διάμεσοι ανά έτος
+
+```{r}
+w <- reshape(med[, c("survey_year", "age", "median")], idvar = "survey_year", timevar = "age",
+             direction = "wide")
+w <- w[order(w$survey_year), ]
+t2 <- data.frame(
+  "Έρευνα (εισοδήματα)" = yr(w$survey_year),
+  "Όλος ο πληθυσμός"    = eur(w$median.TOTAL),
+  "Κάτω των 65"         = eur(w$median.Y_LT65),
+  "18–64"               = eur(w[["median.Y18-64"]]),
+  check.names = FALSE)
+last <- nrow(t2)
+t2[last, ] <- paste0("**", t2[last, ], "**")
+knitr::kable(t2, align = "lrrr", row.names = FALSE)
+```
+
+```{r}
+lt <- med[med$age == "Y_LT65", ]
+below <- lt$survey_year[lt$median_vs_total_pct < 0]
+above <- lt$survey_year[lt$median_vs_total_pct > 0]
+# first year from which the under-65 median stays above the total every year
+run_start <- max(lt$survey_year[lt$median_vs_total_pct <= 0]) + 1
+```
+
+Παρατήρηση: η διάμεσος των κάτω των 65 ήταν **χαμηλότερη** από του συνόλου
+`r years_txt(below)`. Στην κρίση οι συνταξιούχοι ήταν σχετικά προστατευμένοι σε
+σχέση με τους εργαζόμενους και τα παιδιά. Από το `r run_start` είναι σταθερά υψηλότερη, και το
+`r year` η διαφορά είναι `r sgn(m("Y_LT65", "median_vs_total_pct"))`.
+
+## 2. Τεταρτημόρια
+
+**Προσοχή:** πραγματικά όρια τεταρτημορίων δημοσιεύονται **μόνο για όλο τον πληθυσμό**. Για τις
+ηλικιακές ομάδες η Eurostat δεν τα δίνει. Εκεί οι τιμές είναι **εκτίμηση του μοντέλου**, και δίπλα
+γράφεται τι επιτρέπουν τα δημοσιευμένα στοιχεία.
+
+### 2α. Όλος ο πληθυσμός: πραγματικές τιμές
+
+```{r}
+dq <- rbind(data.frame(y = qt$survey_year, q = "P25", es = qt$p25, el = qt$elstat_p25),
+            data.frame(y = qt$survey_year, q = "P50", es = qt$p50, el = qt$elstat_p50),
+            data.frame(y = qt$survey_year, q = "P75", es = qt$p75, el = qt$elstat_p75))
+dq <- dq[!is.na(dq$el) & dq$es != dq$el, ]
+dq <- dq[order(-abs(dq$es - dq$el)), ]
+```
+
+Πηγή: Eurostat [`ilc_di01`](https://ec.europa.eu/eurostat/databrowser/view/ilc_di01/default/table?lang=en)
+(όρια τεταρτημορίων) → `data/derived/quartiles_total.csv`. Τις ίδιες τιμές δίνει η ΕΛΣΤΑΤ στο δελτίο
+*Income Inequality `r year`*, Πίνακας 2. Διαφέρουν σε `r nrow(dq)` από τις `r 3 * nrow(qt)` τιμές.
+Οι περισσότερες διαφορές είναι λίγα ευρώ, από στρογγυλοποίηση ή αναθεώρηση.
+
+```{r}
+#| results: asis
+big <- dq[abs(dq$es / dq$el - 1) > 0.01, ]
+if (nrow(big)) {
+  cat("**Εξαίρεση:** ",
+      paste(sprintf("το %s του %s: %s στην Eurostat, %s στην ΕΛΣΤΑΤ (%s)", big$q, yr(big$y),
+                    eur(big$es), eur(big$el), sgn(100 * (big$el / big$es - 1))), collapse = "· "),
+      ". Η Eurostat δίνει την ίδια τιμή και ως διάμεσο (`ilc_di03`) και ως D5 (`ilc_di01`), και",
+      " τη χρησιμοποιεί για τα επίσημα όρια φτώχειας. Άρα η τιμή της ΕΛΣΤΑΤ είναι μάλλον λάθος στον",
+      " πίνακα του δελτίου, που επαναλαμβάνεται και στο δελτίο του επόμενου έτους. Εδώ",
+      " χρησιμοποιούνται οι τιμές της Eurostat.\n", sep = "")
+}
+```
+
+```{r}
+t3 <- data.frame(
+  "Έρευνα (εισοδήματα)" = yr(qt$survey_year),
+  "P25"                 = eur(qt$p25),
+  "**P50 (διάμεσος)**"  = eur(qt$p50),
+  "P75"                 = eur(qt$p75),
+  "P75 / P25"           = num(qt$p75_p25, 2),
+  check.names = FALSE)
+last <- nrow(t3)
+t3[last, ] <- paste0("**", t3[last, ], "**")
+knitr::kable(t3, align = "lrrrr", row.names = FALSE)
+```
+
+```{r}
+peak <- qt$survey_year[which.max(qt$p75_p25)]
+rises <- qt$survey_year[-1][diff(qt$p75_p25) > 0]
+rises <- rises[rises > peak]
+```
+
+Διαβάζεται έτσι: με εισοδήματα του `r year - 1`, το φτωχότερο 25% του πληθυσμού είχε έως
+`r eur(q_y$p25)` και το πλουσιότερο 25% από `r eur(q_y$p75)` και πάνω. Ο λόγος P75/P25 έφτασε στο
+μέγιστο το `r peak` (`r num(max(qt$p75_p25), 2)`) και από τότε πέφτει, με εξαίρεση
+`r years_txt(rises)`, στο `r num(q_y$p75_p25, 2)` το `r year`. Άρα η μεσαία ζώνη της
+κατανομής «στενεύει».
+
+### 2β. Ηλικιακές ομάδες, SILC `r year`: εκτίμηση μοντέλου και όρια από τα δεδομένα
+
+Τα τεταρτημόρια του μοντέλου προκύπτουν από τα fit Dagum (`R/income_distribution.R`): για το σύνολο
+από τα στοιχεία της ΕΛΣΤΑΤ, για τις ηλικιακές ομάδες από πίνακες της Eurostat ανά ηλικία. Τα
+**όρια** βγαίνουν από τα δημοσιευμένα ποσοστά της ομάδας κάτω ή πάνω από συγκεκριμένα εισοδήματα
+(Eurostat `ilc_li02`, `ilc_di20`) και από τη διάμεσό της. Αφού η αθροιστική κατανομή μόνο ανεβαίνει,
+αν ένα ποσοστό μικρότερο από 25% έχει εισόδημα κάτω από x, τότε σίγουρα P25 > x. Το ίδιο ισχύει
+αντίστροφα για τα άνω όρια. → `data/derived/quartiles_age.csv`
+
+```{r}
+bound_txt <- function(r) {
+  if (!is.na(r$real)) return(paste0("πραγματική **", eur(r$real), "**"))
+  lo <- if (!is.na(r$lower)) sprintf("> %s (%s έχει κάτω)", eur(r$lower), pct_share(r$lower_share_below)) else NULL
+  hi <- if (!is.na(r$upper)) sprintf("< %s (%s έχει κάτω)", eur(r$upper), pct_share(r$upper_share_below)) else NULL
+  if (is.null(lo) && is.null(hi)) "κανένα στοιχείο" else paste(c(lo, hi), collapse = " και ")
+}
+t4 <- do.call(rbind, lapply(c("TOTAL", "Y_LT65", "Y18-64"), function(g) {
+  r25 <- qa_(g, "P25"); r50 <- qa_(g, "P50"); r75 <- qa_(g, "P75")
+  data.frame("Ομάδα" = r25$group,
+             "P25 μοντέλου" = eur(r25$model), "P25: δεδομένα" = bound_txt(r25),
+             "**P50 πραγματική**" = paste0("**", eur(r50$real), "**"),
+             "P75 μοντέλου" = eur(r75$model), "P75: δεδομένα" = bound_txt(r75),
+             check.names = FALSE)
+}))
+knitr::kable(t4, align = "lrlrrl", row.names = FALSE)
+```
+
+```{r}
+y75 <- qa_("Y18-64", "P75"); y25 <- qa_("Y18-64", "P25")
+l25 <- qa_("Y_LT65", "P25"); l75 <- qa_("Y_LT65", "P75")
+t25 <- qa_("TOTAL", "P25"); t75 <- qa_("TOTAL", "P75")
+inside <- function(r) r$model > r$lower & (is.na(r$upper) | r$model < r$upper)
+```
+
+Άρα:
+
+- **18–64, P75:** βρίσκεται με βεβαιότητα ανάμεσα σε `r eur(y75$lower)` και `r eur(y75$upper)`.
+  Η εκτίμηση του μοντέλου (`r eur(y75$model)`) `r if (inside(y75)) "πέφτει μέσα" else "πέφτει έξω"`.
+- **18–64, P25:** τα δεδομένα το περιορίζουν μόνο ανάμεσα σε `r eur(y25$lower)` και τη διάμεσο
+  (`r eur(y25$upper)`), γιατί ανάμεσά τους δεν υπάρχει δημοσιευμένο σημείο. Το
+  `r eur(y25$model)` είναι εκτίμηση.
+- **Κάτω των 65, P25:** είναι με βεβαιότητα πάνω από `r eur(l25$lower)`, και μάλλον λίγο μόνο πάνω,
+  αφού το `r pct_share(l25$lower_share_below)` είναι ήδη κάτω από αυτό το όριο. Η εκτίμηση του
+  μοντέλου (`r eur(l25$model)`) `r if (inside(l25)) "είναι συνεπής" else "είναι εκτός ορίων"`.
+- **Κάτω των 65, P75:** δεν υπάρχει δημοσιευμένο σημείο πάνω από τη διάμεσο. Το
+  `r eur(l75$model)` στηρίζεται μόνο στο μοντέλο (μέσος και λόγοι S80/S20 κ.λπ.) και είναι το
+  λιγότερο βέβαιο νούμερο του πίνακα.
+- **Όλος ο πληθυσμός:** το μοντέλο αποκλίνει από τα πραγματικά τεταρτημόρια κατά
+  `r sgn(t25$model_vs_real_pct)` (P25) και `r sgn(t75$model_vs_real_pct)` (P75). Αυτό δίνει μια
+  ιδέα για το πόσο ακριβές είναι στις ηλικιακές ομάδες.
+
+## 3. Τι σημαίνουν σε εισόδημα νοικοκυριού (SILC `r year`)
+
+Καθαρό ετήσιο εισόδημα νοικοκυριού = ισοδύναμο εισόδημα × ισοδύναμο μέγεθος, με τις πραγματικές
+τιμές → `data/derived/household_examples.csv`. Ο ίδιος πολλαπλασιασμός ισχύει για κάθε άλλο τύπο
+νοικοκυριού.
+
+```{r}
+t5 <- data.frame(
+  " " = sprintf("%s (%s)", ex$statistic, eur(ex$equivalised)),
+  "1 ενήλικας (×1,0)" = eur(ex$one_adult),
+  "2 ενήλικες (×1,5)" = eur(ex$two_adults),
+  "2 γονείς + 1 παιδί <14 (×1,8)" = eur(ex$couple_1child),
+  check.names = FALSE)
+knitr::kable(t5, align = "lrrr", row.names = FALSE)
+```
+
+Παράδειγμα: ζευγάρι με ένα μωρό και `r eur(ex$couple_1child[ex$statistic == "Διάμεσος συνόλου"])`
+καθαρά τον χρόνο βρίσκεται στη διάμεσο όλης της χώρας, αλλά κάτω από τη διάμεσο των ενηλίκων
+18–64 (`r eur(ex$couple_1child[ex$statistic == "Διάμεσος 18–64"])`).

@@ -1,0 +1,98 @@
+---
+title: "Δείκτης S80/S20 στις χώρες της ΕΕ"
+format: gfm
+execute:
+  echo: false
+  warning: false
+---
+
+```{r setup}
+# All numbers come from CSVs in data/derived/:
+#   Rscript scripts/fetch_eurostat.R   # Eurostat tables -> data/eurostat/eu/
+#   Rscript scripts/eu_comparison.R    # -> eu_inequality.csv, eu_trend.csv
+#   quarto render doc/s80_s20.qmd
+d <- function(f) read.csv(file.path("..", "data", "derived", f))
+eu   <- d("eu_inequality.csv")
+eutr <- d("eu_trend.csv")
+
+year <- max(eu$survey_year)
+num  <- function(x, digits = 2) formatC(x, format = "f", digits = digits, decimal.mark = ",")
+eu_y <- eu[eu$survey_year == year, ]
+el   <- eu_y[eu_y$is_greece, ]
+avg  <- eu_y[eu_y$is_eu27, ]
+ms   <- eu_y[!eu_y$is_eu27 & !is.na(eu_y$s80s20), ]
+top  <- ms[which.max(ms$s80s20), ]
+bot  <- ms[which.min(ms$s80s20), ]
+```
+
+SILC `r year` (Eurostat), με εισοδήματα του **`r year - 1`**.
+
+> Το αρχείο `.md` παράγεται από το `doc/s80_s20.qmd`. Όλοι οι αριθμοί διαβάζονται από τα CSV στο
+> `data/derived/`, που γράφει το `scripts/eu_comparison.R`.
+
+## Τι μετράει
+
+Ο **S80/S20** (income quintile share ratio) είναι ο λόγος του συνολικού ισοδύναμου διαθέσιμου εισοδήματος
+του πλουσιότερου 20% του πληθυσμού προς το συνολικό εισόδημα του φτωχότερου 20%. Τιμή 5 σημαίνει ότι το
+πλουσιότερο 20% έχει πέντε φορές το εισόδημα του φτωχότερου 20%. Με ίσα εισοδήματα θα ήταν 1.
+
+Είναι ο δείκτης που προβάλλει πρώτο η ΕΛΣΤΑΤ στο δελτίο της για την ανισότητα. Σε αντίθεση με τον Gini,
+κοιτάζει μόνο τα δύο άκρα της κατανομής και αγνοεί το μεσαίο 60%.
+
+## Η Ελλάδα
+
+Η Ελλάδα έχει S80/S20 **`r num(el$s80s20)`**, έναντι **`r num(avg$s80s20)`** στην ΕΕ-27, και είναι
+**`r el$s80s20_rank`η** πιο άνιση από τις `r el$n_s80s20` χώρες. Το εύρος στην ΕΕ είναι από
+`r num(bot$s80s20)` (`r bot$name_el`) έως `r num(top$s80s20)` (`r top$name_el`).
+
+## Όλες οι χώρες
+
+Κατάταξη από την πιο άνιση (1) στην πιο ίση. Για σύγκριση δίνεται και η κατάταξη με τον Gini.
+
+```{r}
+tb <- eu_y[order(-eu_y$s80s20, eu_y$is_eu27), ]
+hl <- tb$is_greece | tb$is_eu27
+bold <- function(x) ifelse(hl, paste0("**", x, "**"), x)
+knitr::kable(data.frame(
+  "Κατάταξη S80/S20" = bold(ifelse(is.na(tb$s80s20_rank), "—", tb$s80s20_rank)),
+  "Χώρα" = bold(ifelse(tb$is_eu27, "ΕΕ-27 (μέσος όρος)", tb$name_el)),
+  "S80/S20" = bold(num(tb$s80s20)),
+  "Gini" = bold(num(tb$gini, 1)),
+  "Κατάταξη Gini" = bold(ifelse(is.na(tb$gini_rank), "—", tb$gini_rank)),
+  check.names = FALSE), align = "rlrrr", row.names = FALSE)
+```
+
+Ίδια τιμή σημαίνει ίδια θέση στην κατάταξη.
+
+```{r}
+#| results: asis
+moved <- ms[abs(ms$s80s20_rank - ms$gini_rank) >= 5, ]
+moved <- moved[order(-abs(moved$s80s20_rank - moved$gini_rank)), ]
+if (nrow(moved)) {
+  cat("Οι δύο δείκτες δεν κατατάσσουν πάντα τις χώρες με την ίδια σειρά. Διαφορά πέντε θέσεων ή περισσότερο",
+      "έχουν:\n\n")
+  cat(sprintf("- **%s**: %dη με τον S80/S20, %dη με τον Gini.\n", moved$name_el, moved$s80s20_rank,
+              moved$gini_rank), sep = "")
+  cat("\nΌταν μια χώρα είναι πιο ψηλά με τον S80/S20, η απόσταση ανάμεσα στα δύο άκρα είναι μεγάλη σε σύγκριση",
+      "με την ανισότητα της κατανομής συνολικά. Όταν είναι πιο χαμηλά, μεγαλύτερο μέρος της ανισότητας βρίσκεται",
+      "στο μεσαίο 60%, που ο S80/S20 δεν βλέπει.\n")
+}
+```
+
+## Η πορεία από το `r min(eutr$survey_year)`
+
+```{r}
+tr <- eutr[order(eutr$survey_year), ]
+knitr::kable(data.frame(
+  "Έρευνα (εισοδήματα)" = sprintf("%d (%d)", tr$survey_year, tr$income_year),
+  "Ελλάδα" = num(tr$s80s20_greece),
+  "ΕΕ-27" = num(tr$s80s20_eu27),
+  check.names = FALSE), align = "lrr", row.names = FALSE)
+```
+
+## Πηγή
+
+Eurostat, πίνακας [`ilc_di11`](https://ec.europa.eu/eurostat/databrowser/view/ilc_di11/default/table?lang=en)
+(S80/S20, όλος ο πληθυσμός) και [`ilc_di12`](https://ec.europa.eu/eurostat/databrowser/view/ilc_di12/default/table?lang=en)
+(Gini). Ημερομηνίες λήψης και ενημέρωσης στο `data/eurostat/eu/_index.csv`. Η ΕΛΣΤΑΤ δημοσιεύει για την
+Ελλάδα την ίδια μέτρηση, και μπορεί να διαφέρει στο δεύτερο δεκαδικό λόγω στρογγυλοποίησης ή αναθεώρησης.

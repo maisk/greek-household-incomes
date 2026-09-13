@@ -1,0 +1,4 @@
+"dataset","description","eurostat_label","updated","rows"
+"ilc_di12","Gini coefficient of equivalised disposable income, all countries","Gini coefficient of equivalised disposable income by age","2026-06-08T23:00:00+0200",435
+"ilc_di11","Income quintile share ratio S80/S20, all countries","Income quintile share ratio S80/S20 for disposable income by sex and age group","2026-06-08T23:00:00+0200",833
+"ilc_di01","Share of national equivalised income by quantile (deciles etc.), all countries","Distribution of income by quantiles","2026-07-27T23:00:00+0200",26869
