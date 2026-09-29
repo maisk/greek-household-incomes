@@ -14,7 +14,7 @@ with a reproducible R pipeline. It covers:
 - income concentration, the Lorenz curve and the Gini coefficient;
 - Greece against the other EU member states (Gini, S80/S20, share of the richest holding half of all income).
 
-Companion project: [`greek-child-investment-account`](../greek-child-investment-account), an article on who
+Companion project: [`greek-child-investment-account-article`](https://github.com/maisk/greek-child-investment-account-article), an article on who
 benefits from the state-matched child investment account, which links here for the basic concepts.
 
 ## Layout

@@ -15,6 +15,7 @@ hugo:
     creator: "Kostas Maistrelis"
   fields:
     - { key: "dcterms:license", value: "items/licenses/cc-by-4", type: url }
+    - { key: "schema:codeRepository", value: "https://github.com/maisk/greek-household-incomes", urlLabel: "github.com/maisk/greek-household-incomes" }
 format:
   html:
     embed-resources: true
